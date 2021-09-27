@@ -1,0 +1,16 @@
+version: "3.8"
+
+services:
+  redis:
+    image: redis:6
+    ports:
+      - "6379:6379"
+
+  printer:
+    image: mcr.microsoft.com/dotnet/sdk:5.0
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: dotnet run
+    depends_on:
+      - redis
