@@ -32,7 +32,12 @@ namespace DelayedPrinter
         public async Task Schedule(DelayedPrintRequest request)
         {
             var message = JsonSerializer.Serialize(request);
-            await _connection.GetDatabase().SortedSetAddAsync("delayed", message, request.Timestamp);
+            var redis = _connection.GetDatabase();
+            if (request.PrintAt <= DateTimeOffset.Now)
+                // Print immediately
+                await redis.PublishAsync(Printer.RedisChannel, message);
+            else
+                await redis.SortedSetAddAsync(RedisKey, message, request.Timestamp);
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -63,6 +68,7 @@ namespace DelayedPrinter
                     take: 100); // Max amount of messages for one shot
                 var messagesFetched = messages.Length;
 
+#pragma warning disable CS4014
                 if (messagesFetched > 0)
                 {
                     var moveTransaction = redis.CreateTransaction();
@@ -79,9 +85,12 @@ namespace DelayedPrinter
                     else
                         _logger.LogError("Could not publish messages for processing");
                 }
+#pragma warning restore
 
                 return messagesFetched;
-            } finally {
+            }
+            finally
+            {
                 redis.LockRelease("scheduler", _token);
             }
         }

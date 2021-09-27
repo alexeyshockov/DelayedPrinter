@@ -17,7 +17,7 @@ namespace DelayedPrinter.Tests
 
         private readonly WebApplicationFactory<Startup> _factory;
 
-        private TerminalStub _terminal = new();
+        private readonly TerminalStub _terminal = new();
 
         public PrinterTests(WebApplicationFactory<Startup> factory)
         {
@@ -51,8 +51,7 @@ namespace DelayedPrinter.Tests
             // Assert
             response.EnsureSuccessStatusCode();
 
-            await Task.Delay(50); // Just give it a bit of milliseconds to handle everything
-            _terminal.PrintedMessages.Should().Contain(message);
+            _terminal.PrintedMessages.Should().ContainSingle(message);
         }
 
         [Fact]
@@ -79,7 +78,39 @@ namespace DelayedPrinter.Tests
             _terminal.PrintedMessages.Should().BeEmpty(); // Still empty
 
             await Task.Delay(TimeSpan.FromSeconds(1));
-            _terminal.PrintedMessages.Should().Contain(message); // Got it!
+            _terminal.PrintedMessages.Should().ContainSingle(message); // Got it!
+        }
+
+        [Fact]
+        public async Task Print_SameMessagesInTheFuture_PrintsAllDelayed()
+        {
+            // Arrange
+            var client = CreateAppClient();
+            var message = "Test";
+            var request = new
+            {
+                message = message,
+                printAt = DateTimeOffset.Now.AddSeconds(5),
+            };
+
+            // Act
+            var responses = await Task.WhenAll(
+                client.PostAsJsonAsync(Url, request),
+                client.PostAsJsonAsync(Url, request),
+                client.PostAsJsonAsync(Url, request));
+
+            // Assert
+            foreach (var response in responses)
+                response.EnsureSuccessStatusCode();
+
+            await Task.Delay(50); // Just give it a bit of milliseconds to handle everything
+            _terminal.PrintedMessages.Should().BeEmpty();
+
+            await Task.Delay(TimeSpan.FromSeconds(4));
+            _terminal.PrintedMessages.Should().BeEmpty(); // Still empty
+
+            await Task.Delay(TimeSpan.FromSeconds(1));
+            _terminal.PrintedMessages.Should().ContainInOrder(message, message, message); // Got it!
         }
     }
 }
